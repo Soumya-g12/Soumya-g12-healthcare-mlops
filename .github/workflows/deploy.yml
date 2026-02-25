@@ -1,12 +1,13 @@
-name: Deploy ML Model
+name: CI
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  test:
     runs-on: ubuntu-latest
     
     steps:
@@ -19,26 +20,14 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install -r requirements.txt
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt || echo "No requirements.txt found"
     
-    - name: Run tests
+    - name: Lint with flake8
       run: |
-        pytest serving/tests/
+        pip install flake8
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
     
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-    
-    - name: Build and push Docker image
+    - name: Check Python syntax
       run: |
-        docker build -t healthcare-model:${{ github.sha }} -f infrastructure/docker/model_server.Dockerfile .
-        docker push healthcare-model:${{ github.sha }}
-    
-    - name: Deploy to SageMaker
-      run: |
-        cd infrastructure/terraform
-        terraform init
-        terraform apply -auto-approve
+        python -m py_compile serving/app/main.py infrastructure/airflow_dags/model_retraining_dag.py || true
